@@ -6,6 +6,7 @@ Menangani login, mengambil data presensi, dan submit validasi kehadiran.
 import re
 import requests
 from bs4 import BeautifulSoup
+import logging
 from config import (
     BASE_URL,
     DEFAULT_KESESUAIAN_PERKULIAHAN,
@@ -13,6 +14,8 @@ from config import (
     DEFAULT_PENILAIAN_MHS,
     DEFAULT_KRITIK_SARAN,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AmikomClient:
@@ -31,6 +34,19 @@ class AmikomClient:
         self.logged_in = False
         self.nim = None
 
+    def _request(self, method: str, url: str, *, retries: int = 2, **kwargs):
+        """Wrapper request dengan retry ringan khusus timeout/connection error."""
+        attempt = 0
+        while True:
+            try:
+                return self.session.request(method=method, url=url, **kwargs)
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                attempt += 1
+                if attempt > retries:
+                    logger.warning("Request failed after retries: %s %s (%s)", method, url, exc)
+                    raise
+                logger.info("Retrying request (%s/%s): %s %s", attempt, retries, method, url)
+
     # ------------------------------------------------------------------
     # AUTH
     # ------------------------------------------------------------------
@@ -40,7 +56,7 @@ class AmikomClient:
         url = BASE_URL + "auth/toenter"
         data = {"pengguna": nim, "passw": password}
         try:
-            res = self.session.post(url, data=data, timeout=15)
+            res = self._request("POST", url, data=data, timeout=15)
             if res.text.strip() == "111":
                 self.logged_in = True
                 self.nim = nim
@@ -55,8 +71,16 @@ class AmikomClient:
 
     def get_student_info(self) -> dict:
         """Mengambil data profil mahasiswa dan list mata kuliah."""
-        url = BASE_URL + "pembelajaran/presensimahasiswa"
-        res = self.session.get(url, timeout=10)
+        url = BASE_URL + "pembelajaran/rekap_presensi"
+        try:
+            res = self._request("GET", url, timeout=10)
+        except requests.RequestException:
+            return {
+                "nama": "",
+                "thn_akademik": "Unknown",
+                "semester": "Unknown",
+                "matkul": [],
+            }
         
         soup = BeautifulSoup(res.text, "html.parser")
         
@@ -99,7 +123,7 @@ class AmikomClient:
         """
         url = BASE_URL + "pembelajaran/list_makul_belum_validasi"
         try:
-            res = self.session.post(url, timeout=15)
+            res = self._request("POST", url, timeout=15)
             data = res.json()
             result = []
             for key in data:
@@ -114,7 +138,10 @@ class AmikomClient:
     def get_semester_list(self, thn_akademik: str) -> list[dict]:
         """Ambil daftar semester untuk tahun akademik tertentu."""
         url = BASE_URL + "pembelajaran/getSem"
-        res = self.session.post(url, data={"thn_akademik": thn_akademik}, timeout=15)
+        try:
+            res = self._request("POST", url, data={"thn_akademik": thn_akademik}, timeout=15)
+        except requests.RequestException:
+            return []
         soup = BeautifulSoup(res.text, "html.parser")
         options = soup.find_all("option")
         return [
@@ -131,7 +158,7 @@ class AmikomClient:
         url = BASE_URL + "pembelajaran/getmakul"
         data = {"thn_akademik": thn_akademik, "semester": semester}
         try:
-            res = self.session.post(url, data=data, timeout=15)
+            res = self._request("POST", url, data=data, timeout=15)
             soup = BeautifulSoup(res.text, "html.parser")
             options = soup.find_all("option")
             return [
@@ -156,7 +183,7 @@ class AmikomClient:
             "makul": makul,
         }
         try:
-            res = self.session.post(url, data=data, timeout=15)
+            res = self._request("POST", url, data=data, timeout=15)
             return self._parse_absensi_html(res.text)
         except Exception:
             return {"nama_mk": "", "dosen": "", "belum_validasi": []}
@@ -218,7 +245,7 @@ class AmikomClient:
         """
         url = BASE_URL + f"pembelajaran/ajax_editpresensi/{presensi_id}"
         try:
-            res = self.session.get(url, timeout=15)
+            res = self._request("GET", url, timeout=15)
             return res.json()
         except Exception:
             return None
@@ -271,7 +298,7 @@ class AmikomClient:
                             form_data[f"asdospenilaian_{idx}_{krit_id}"] = best_val
 
         try:
-            res = self.session.post(url, data=form_data, timeout=15)
+            res = self._request("POST", url, data=form_data, timeout=15)
             result = res.json()
             return result.get("status", False)
         except Exception:
