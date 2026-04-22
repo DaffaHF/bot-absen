@@ -1,6 +1,11 @@
 # Konfigurasi Bot Discord Absensi Amikom Purwokerto
 
-DISCORD_BOT_TOKEN = "TOKEN_PLACEHOLDER"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 BASE_URL = "https://student.amikompurwokerto.ac.id/"
 
