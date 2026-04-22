@@ -1,6 +1,5 @@
-# Konfigurasi Bot Telegram dan Discord Absensi Amikom Purwokerto
+# Konfigurasi Bot Discord Absensi Amikom Purwokerto
 
-TELEGRAM_BOT_TOKEN = "8759595283:AAHh5zmGBrYVV1EQ5KG972teZnzW8WVBYtQ"
 DISCORD_BOT_TOKEN = "TOKEN_PLACEHOLDER"
 
 BASE_URL = "https://student.amikompurwokerto.ac.id/"
